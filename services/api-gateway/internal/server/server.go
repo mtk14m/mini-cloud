@@ -3,6 +3,7 @@ package server
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/mtk14m/mini-cloud/api-gateway/internal/config"
+	"github.com/mtk14m/mini-cloud/api-gateway/internal/handlers"
 	"github.com/mtk14m/mini-cloud/api-gateway/internal/middleware"
 )
 
@@ -56,14 +57,14 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 
 		//services protégés
 		protected := v1.Group("/")
-		protected.Use(middleware.Auth(cfg))
+		protected.Use(middleware.Auth(cfg.JWT_SECRET))
 		{
 			//Fichiers
 			files := protected.Group("/files")
 			{
 				files.POST("/upload", handlers.UploadFile(cfg))
-				files.GET("/download", handlers.DownloadFile(cfg))
-				files.DELETE("/delete", handlers.DeleteFile(cfg))
+				files.GET("/:id", handlers.DownloadFile(cfg))
+				files.DELETE("/:id", handlers.DeleteFile(cfg))
 			}
 		}
 

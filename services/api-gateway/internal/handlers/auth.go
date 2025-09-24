@@ -30,7 +30,13 @@ type AuthResponse struct {
 	Role     string `json:"role"`
 }
 
-func Login(cfg *config.Config) gin.HandlerFunc {
+// Login gère la connexion de l'utilisateur.
+func Login(cfg *config.Config, client ...*http.Client) gin.HandlerFunc {
+	httpClient := http.DefaultClient
+	if len(client) > 0 {
+		httpClient = client[0]
+	}
+
 	return func(c *gin.Context) {
 		var req LoginRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -38,14 +44,14 @@ func Login(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		//Appeler le service d'authentification
-		authResp, err := callAuthservice(cfg.AuthServiceURL+"/login", req)
+		// Appeler le service d'authentification
+		authResp, err := callAuthService(httpClient, cfg.AuthServiceURL+"/login", req)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Auth service error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Auth service error: " + err.Error()})
 			return
 		}
 
-		//Générer un token JWT
+		// Générer un token JWT
 		token, err := generateJWT(authResp.UserID, authResp.Username, authResp.Role, cfg.JWT_SECRET)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
@@ -61,31 +67,38 @@ func Login(cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func Register(cfg *config.Config) gin.HandlerFunc {
+// Register gère l'inscription d'un nouvel utilisateur.
+func Register(cfg *config.Config, client ...*http.Client) gin.HandlerFunc {
+	httpClient := http.DefaultClient
+	if len(client) > 0 {
+		httpClient = client[0]
+	}
+
 	return func(c *gin.Context) {
 		var req RegisterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return // Ajout du return manquant
 		}
 
-		//Appeler le service d'authentification
-		authResp, err := callAuthservice(cfg.AuthServiceURL+"/register", req)
+		// Appeler le service d'authentification
+		authResp, err := callAuthService(httpClient, cfg.AuthServiceURL+"/register", req)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Auth service error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Auth service error: " + err.Error()})
 			return
 		}
 
 		c.JSON(http.StatusCreated, gin.H{
-			"message": "User created succesfully",
+			"message": "User created successfully",
 			"user_id": authResp.UserID,
 		})
 	}
 }
 
+// Validate valide le token JWT et retourne les informations de l'utilisateur.
 func Validate(cfg *config.Config) gin.HandlerFunc {
-
 	return func(c *gin.Context) {
-		//Le middleware Auth à déja validé le token
+		// Le middleware Auth a déjà validé le token
 		userID := c.GetString("user_id")
 		username := c.GetString("username")
 		role := c.GetString("role")
@@ -99,38 +112,38 @@ func Validate(cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-// Fonction utilitaire pour appeler le service d'authentification
-func callAuthservice(url string, data interface{}) (*AuthResponse, error) {
-
+// callAuthService appelle le service d'authentification externe.
+func callAuthService(client *http.Client, url string, data interface{}) (*AuthResponse, error) {
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal request: %v", err)
 	}
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	resp, err := client.Post(url, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to call auth service: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to authenticate: %s", resp.Status)
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("auth service returned non-200 status: %s, body: %s", resp.Status, string(body))
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read response body: %v", err)
 	}
 
 	var authResp AuthResponse
 	if err := json.Unmarshal(body, &authResp); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal response: %v, body: %s", err, string(body))
 	}
 
 	return &authResp, nil
 }
 
-// Fonction utilitaire pour générer un token JWT
+// generateJWT génère un token JWT pour l'utilisateur.
 func generateJWT(userID, username, role, secret string) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id":  userID,
