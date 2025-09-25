@@ -1,6 +1,8 @@
 package server
 
 import (
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/mtk14m/mini-cloud/api-gateway/internal/config"
 	"github.com/mtk14m/mini-cloud/api-gateway/internal/handlers"
@@ -19,16 +21,19 @@ func New(cfg *config.Config) *Server {
 
 	router := gin.New()
 
-	rateLimiter := middleware.NewRateLimiter(
-		cfg.RedisURL,
-		cfg.RateLimit,
-	)
-
 	//Middlewares global
 	router.Use(gin.Recovery())
 	router.Use(middleware.Cors())
 	router.Use(gin.Logger())
-	router.Use(rateLimiter.RateLimit())
+
+	//on va desactivé le ratelimiting en mode debug
+	if cfg.RedisURL != "" && !strings.Contains(cfg.RedisURL, "localhost") {
+		rateLimiter := middleware.NewRateLimiter(
+			cfg.RedisURL,
+			cfg.RateLimit,
+		)
+		router.Use(rateLimiter.RateLimit())
+	}
 
 	// Routes
 	setupRoutes(router, cfg)

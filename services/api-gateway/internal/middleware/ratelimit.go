@@ -38,8 +38,8 @@ func (rl *RateLimiter) RateLimit() gin.HandlerFunc {
 		// Incrémenter le compteur
 		count, err := rl.redis.Incr(c.Request.Context(), key).Result()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Rate limit error"})
-			c.Abort()
+			// Si Redis n'est pas disponible, continuer sans rate limiting
+			c.Next()
 			return
 		}
 
